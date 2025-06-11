@@ -7,6 +7,8 @@
 #include <pthread.h>
 #include "server.h"
 
+static void* server_receive(void* client);
+
 int server_init(int socket_family, int socket_type, int protocol){
 
 	int server_fd = socket(socket_family, socket_type, protocol);
@@ -54,7 +56,19 @@ int server_listen(int server_fd, uint32_t limit){
 			printf("Failed to accept client(%d)!!!\n", errno);
 			continue;
 		}
-		printf("Connected client with address : %u\n", client_addr.sin_addr.s_addr);
+		pthread_t thread;
+		pthread_create(&thread, NULL, server_receive, (void*)&client_fd);
+		pthread_detach(thread);
 	}
 	return 0;
+}
+
+static void* server_receive(void* client){
+	int client_fd = *((int*)client);
+	char buffer[DEFAULT_BUFFER_SIZE];
+	ssize_t bytes_received = recv(client_fd, (void*)buffer, sizeof(buffer) / sizeof(char), 0);
+	if(bytes_received > 0){
+		printf("%s\n\n\n\n\n", buffer);
+	}
+	return NULL;
 }
