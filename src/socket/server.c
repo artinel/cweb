@@ -13,6 +13,8 @@
 #include "server.h"
 
 static void* server_receive(void* client);
+static const char* get_file_extension(const char* file_name);
+static const char* get_mime_type(const char* extension);
 
 int server_init(int socket_family, int socket_type, int protocol){
 
@@ -71,6 +73,7 @@ int server_listen(int server_fd, uint32_t limit){
 static void* server_receive(void* client){
 	int client_fd = *((int*)client);
 	char buffer[DEFAULT_BUFFER_SIZE];
+	int length = 0;
 	while(client_fd > 0){
 		ssize_t bytes_received = recv(client_fd, (void*)buffer, sizeof(buffer) / sizeof(char), 0);
 		if(bytes_received > 0){
@@ -84,31 +87,36 @@ static void* server_receive(void* client){
 					file_path++;
 				}
 				file_path += 2;
-			
-				FILE* file = fopen(file_path, "r");
+				
+				FILE* file = fopen(file_path, "rb");
+
 				if(file != NULL){
+					int file_fd = fileno(file);
 					struct stat file_stat;
-					int fd = fileno(file);
-					fstat(fd, &file_stat);
+					fstat(file_fd, &file_stat);
 				
 					const char* header = "HTTP/1.1 200 OK\n"\
-								"Content-Type:text/html;charset=utf-8\n"\
 								"Expires:-1\n";
-					char response[strlen(header) + file_stat.st_size + 30];
 					char file_content[file_stat.st_size + 1];
-			
-					int index = 0;
-					char c = 0;
-					while((c = fgetc(file)) != EOF){
-						file_content[index++] = c;
-					}
-					file_content[index] = 0;
+					const char* extension = get_file_extension(file_path);
+					const char* mime = get_mime_type(extension);
+					char response[strlen(header) + strlen(mime) + file_stat.st_size + 30];
 
-					sprintf(response, "%sContent-Length:%ld\n\n%s", header, 
-							file_stat.st_size, file_content);
+					ssize_t bytes_read = read(file_fd, file_content, file_stat.st_size);
+					file_content[bytes_read] = 0;
 
-					send(client_fd, response, strlen(response), 0);
+					sprintf(response, "%sContent-Type:%s\nContent-Length:%ld\n\n", header, 
+							mime, file_stat.st_size);
+					
+					length = strlen(response);
+
+					memcpy(response + length, file_content, file_stat.st_size);
+					
+					length += file_stat.st_size;
+
+					send(client_fd, response, length, 0);
 					fclose(file);
+					close(file_fd);
 				}else{
 					const char* response_404 = "HTTP/1.1 404 Not Found\n"\
 					    			"Expires:-1\n"\
@@ -118,6 +126,8 @@ static void* server_receive(void* client){
 					send(client_fd, response_404, strlen(response_404), 0);
 				}
 			}
+
+			regfree(&regex);
 		}
 	}
 	shutdown(client_fd, SHUT_RDWR);
@@ -126,4 +136,38 @@ static void* server_receive(void* client){
 
 void server_exit(int server_fd){
 	shutdown(server_fd, SHUT_RDWR);
+}
+
+static const char* get_file_extension(const char* file_name){
+	const char* tmp = file_name;
+	while(*tmp != '.' && tmp != &file_name[strlen(file_name) - 1]){
+		tmp++;
+	}
+	if(tmp == &file_name[strlen(file_name) - 1]){
+		return NULL;
+	}else{
+		tmp++;
+	}
+	return tmp;
+}
+
+static const char* get_mime_type(const char* extension){
+	
+	if(extension != NULL){
+		if(strcasecmp(extension, "html") == 0){
+			return "text/html";	
+		}else if(strcasecmp(extension, "css") == 0){
+			return "text/css";
+		}else if(strcasecmp(extension, "js") == 0){
+			return "application/javascript";
+		}else if(strcasecmp(extension, "jpg") == 0){
+			return "image/jpeg";
+		}else if(strcasecmp(extension, "png") == 0){
+			return "image/png";
+		}else{
+			return "application/octet-stream";
+		}
+	}
+
+	return NULL;
 }
