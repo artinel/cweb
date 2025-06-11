@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <errno.h>
 #include "version.h"
 #include "socket/server.h"
 
@@ -15,8 +16,12 @@ int main(int argc, char** argv){
 	printf("CWeb version %s\n", CWEB_VERSION);
 
 	server_fd = server_init(AF_INET, SOCK_STREAM, 0);
-	server_bind(server_fd, AF_INET, INADDR_ANY, DEFAULT_PORT);
-	server_listen(server_fd, DEFAULT_QUEUE_LIMIT);
+	if(server_fd >= 0){
+		int bind_res = server_bind(server_fd, AF_INET, INADDR_ANY, DEFAULT_PORT);
+		if(bind_res == 0){
+			server_listen(server_fd, DEFAULT_QUEUE_LIMIT);
+		}
+	}
 
 	return 0;
 }

@@ -10,6 +10,7 @@
 #include <ctype.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <sys/mman.h>
 #include "server.h"
 
 static void* server_receive(void* client);
@@ -23,13 +24,13 @@ int server_init(int socket_family, int socket_type, int protocol){
 
 	if(server_fd < 0){
 		printf("Failed to create server socket(%d)!!!\n", errno);
-		return errno;
+		return server_fd;
 	}
 
 	int opt_res = setsockopt(server_fd, protocol, SOL_SOCKET | SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt));
 	if(opt_res < 0){
 		printf("Failed to set socket opt's(%d)\n", errno);
-		return errno;
+		return opt_res;
 	}
 
 	return server_fd;									      
@@ -44,7 +45,7 @@ int server_bind(int server_fd, int addr_family, uint32_t addr, uint16_t port){
 	int bind_res = bind(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr));
 	if(bind_res < 0){
 		printf("Failed to bind address and port to socket(%d)!!!\n", errno);
-		return errno;
+		return bind_res;
 	}
 	return 0;
 }
@@ -94,29 +95,36 @@ static void* server_receive(void* client){
 					int file_fd = fileno(file);
 					struct stat file_stat;
 					fstat(file_fd, &file_stat);
-				
+					
 					const char* header = "HTTP/1.1 200 OK\n"\
 								"Expires:-1\n";
 					char file_content[file_stat.st_size + 1];
 					const char* extension = get_file_extension(file_path);
 					const char* mime = get_mime_type(extension);
-					char response[strlen(header) + strlen(mime) + file_stat.st_size + 30];
+					char* response = malloc(strlen(header) + 
+							strlen(mime) + 
+							file_stat.st_size + 30);
 
 					ssize_t bytes_read = read(file_fd, file_content, file_stat.st_size);
 					file_content[bytes_read] = 0;
+
 
 					sprintf(response, "%sContent-Type:%s\nContent-Length:%ld\n\n", header, 
 							mime, file_stat.st_size);
 					
 					length = strlen(response);
 
-					memcpy(response + length, file_content, file_stat.st_size);
+					memcpy(response + length, file_content, file_stat.st_size - 1);
 					
+
 					length += file_stat.st_size;
 
 					send(client_fd, response, length, 0);
+					free(response);
+					response = NULL;
 					fclose(file);
 					close(file_fd);
+
 				}else{
 					const char* response_404 = "HTTP/1.1 404 Not Found\n"\
 					    			"Expires:-1\n"\
@@ -164,6 +172,10 @@ static const char* get_mime_type(const char* extension){
 			return "image/jpeg";
 		}else if(strcasecmp(extension, "png") == 0){
 			return "image/png";
+		}else if(strcasecmp(extension, "mp3") == 0){
+			return "audio/mpeg";
+		}else if(strcasecmp(extension, "mp4") == 0){
+			return "video/mp4";
 		}else{
 			return "application/octet-stream";
 		}
