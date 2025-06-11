@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <errno.h>
+#include <pthread.h>
 #include "server.h"
 
 int server_init(int socket_family, int socket_type, int protocol){
@@ -42,8 +43,18 @@ int server_bind(int server_fd, int addr_family, uint32_t addr, uint16_t port){
 int server_listen(int server_fd, uint32_t limit){
 	int listen_res = listen(server_fd, limit);
 	if(listen_res < 0){
-		printf("Failed to listen to socket(%d)!!!\n", listen_res);
+		printf("Failed to listen to socket(%d)!!!\n", errno);
 		return errno;
+	}
+	while(1){
+		struct sockaddr_in client_addr;
+		socklen_t addr_len = sizeof(client_addr);
+		int client_fd = accept(server_fd, (struct sockaddr*)&client_addr, &addr_len);
+		if(client_fd < 0){
+			printf("Failed to accept client(%d)!!!\n", errno);
+			continue;
+		}
+		printf("Connected client with address : %u\n", client_addr.sin_addr.s_addr);
 	}
 	return 0;
 }
