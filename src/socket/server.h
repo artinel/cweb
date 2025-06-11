@@ -10,5 +10,6 @@
 int server_init(int socket_family, int socket_type, int protocol);
 int server_bind(int server_fd, int addr_family, uint32_t addr, uint16_t port);
 int server_listen(int server_fd, uint32_t limit);
+void server_exit(int server_fd);
 
 #endif
