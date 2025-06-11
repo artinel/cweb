@@ -5,6 +5,11 @@
 #include <netinet/in.h>
 #include <errno.h>
 #include <pthread.h>
+#include <string.h>
+#include <regex.h>
+#include <ctype.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include "server.h"
 
 static void* server_receive(void* client);
@@ -66,9 +71,54 @@ int server_listen(int server_fd, uint32_t limit){
 static void* server_receive(void* client){
 	int client_fd = *((int*)client);
 	char buffer[DEFAULT_BUFFER_SIZE];
+	while(1){
 	ssize_t bytes_received = recv(client_fd, (void*)buffer, sizeof(buffer) / sizeof(char), 0);
 	if(bytes_received > 0){
-		printf("%s\n\n\n\n\n", buffer);
+
+		regex_t regex;
+		regcomp(&regex, "^GET /([^ ]*) HTTP/1", REG_EXTENDED);
+		regmatch_t matches[2];
+		if(regexec(&regex, buffer, 2, matches, 0) == 0){
+			buffer[matches[1].rm_eo] = '\0';
+			char* file_path = buffer;
+			while(!isspace(*file_path)){
+				file_path++;
+			}
+			file_path += 2;
+			
+			FILE* file = fopen(file_path, "r");
+			if(file != NULL){
+				struct stat file_stat;
+				int fd = fileno(file);
+				fstat(fd, &file_stat);
+				
+				const char* header = "HTTP/1.1 200 OK\n"\
+							   "Content-Type:text/html;charset=utf-8\n"\
+							   "Expires:-1\n";
+				char response[strlen(header) + file_stat.st_size + 30];
+				char file_content[file_stat.st_size + 1];
+			
+				int index = 0;
+				char c = 0;
+				while((c = fgetc(file)) != EOF){
+					file_content[index++] = c;
+				}
+				file_content[index] = 0;
+
+				sprintf(response, "%sContent-Length:%ld\n\n%s", header, 
+						file_stat.st_size, file_content);
+
+				send(client_fd, response, strlen(response), 0);
+			}else{
+				const char* response_404 = "HTTP/1.1 404 Not Found\n"\
+							    "Expires:-1\n"\
+							    "Content-Type:text/plain;charset=utf-8\n"\
+							    "Content-Length:13\n\n"\
+							    "404 Not Found";
+				send(client_fd, response_404, strlen(response_404), 0);
+			}
+		}
+	}
 	}
 	return NULL;
 }
