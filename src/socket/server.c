@@ -114,7 +114,7 @@ static void* server_receive(void* client){
 					
 					length = strlen(response);
 
-					memcpy(response + length, file_content, file_stat.st_size - 1);
+					memcpy(response + length, file_content, file_stat.st_size);
 					
 
 					length += file_stat.st_size;
